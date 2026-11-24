@@ -24,6 +24,10 @@ on:
         description: リクエストに使う顧客の数
         type: number
         default: 1000
+      burst_total:
+        description: burst で同時に送る件数
+        type: number
+        default: 15000
 
 permissions:
   contents: read
@@ -73,6 +77,7 @@ jobs:
           SUCCESS_MARKER: ${{ secrets.SUCCESS_MARKER }}
           EXTRA_HEADERS: ${{ secrets.EXTRA_HEADERS }}
           CUSTOMER_COUNT: ${{ inputs.customers }}
+          BURST_TOTAL: ${{ inputs.burst_total }}
           TEST: ${{ inputs.test }}
           SHARDS: ${{ inputs.shards }}
           SHARD: ${{ matrix.shard }}
