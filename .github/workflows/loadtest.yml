@@ -28,6 +28,10 @@ on:
         description: burst で同時に送る件数
         type: number
         default: 15000
+      max_vus:
+        description: ramp の仮想ユーザーの上限 (全ランナーの合計)
+        type: number
+        default: 40000
 
 permissions:
   contents: read
@@ -78,6 +82,7 @@ jobs:
           EXTRA_HEADERS: ${{ secrets.EXTRA_HEADERS }}
           CUSTOMER_COUNT: ${{ inputs.customers }}
           BURST_TOTAL: ${{ inputs.burst_total }}
+          MAX_VUS: ${{ inputs.max_vus }}
           TEST: ${{ inputs.test }}
           SHARDS: ${{ inputs.shards }}
           SHARD: ${{ matrix.shard }}

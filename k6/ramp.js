@@ -11,7 +11,7 @@ export const options = {
       startRate: 0,
       timeUnit: "1s",
       preAllocatedVUs: 200,
-      maxVUs: Math.ceil(40000 / SHARDS),
+      maxVUs: Math.ceil(Number(__ENV.MAX_VUS ?? "40000") / SHARDS),
       stages: RATES.flatMap((rate) => [
         { target: Math.ceil(rate / SHARDS), duration: "30s" },
         { target: Math.ceil(rate / SHARDS), duration: STAGE_DURATION },
