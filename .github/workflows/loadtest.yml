@@ -1,0 +1,107 @@
+name: loadtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      test:
+        description: 試験
+        type: choice
+        options: [ramp, burst]
+        default: ramp
+      shards:
+        description: ランナーの台数
+        type: number
+        default: 1
+      rates:
+        description: ramp の段 (件/秒、カンマ区切り)
+        type: string
+        default: 100,250,500
+      stage_duration:
+        description: ramp の各段の時間
+        type: string
+        default: 5m
+      customers:
+        description: リクエストに使う顧客の数
+        type: number
+        default: 1000
+
+permissions:
+  contents: read
+
+concurrency:
+  group: loadtest
+
+env:
+  K6_RELEASE: v2.4.0
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+      start_at: ${{ steps.plan.outputs.start_at }}
+    steps:
+      - id: plan
+        env:
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          echo "shards=$(jq -cn --argjson n "$SHARDS" '[range($n)]')" >> "$GITHUB_OUTPUT"
+          echo "start_at=$(( $(date +%s) + 300 ))" >> "$GITHUB_OUTPUT"
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          curl -fsSL "https://github.com/grafana/k6/releases/download/$K6_RELEASE/k6-$K6_RELEASE-linux-amd64.tar.gz" |
+            tar -xz --strip-components=1 -C /usr/local/bin "k6-$K6_RELEASE-linux-amd64/k6"
+
+      - name: Run
+        env:
+          BASE_URL: ${{ secrets.BASE_URL }}
+          ENDPOINT: ${{ secrets.ENDPOINT }}
+          BASIC_AUTH: ${{ secrets.BASIC_AUTH }}
+          BODY_TEMPLATE: ${{ secrets.BODY_TEMPLATE }}
+          SUCCESS_MARKER: ${{ secrets.SUCCESS_MARKER }}
+          EXTRA_HEADERS: ${{ secrets.EXTRA_HEADERS }}
+          CUSTOMER_COUNT: ${{ inputs.customers }}
+          TEST: ${{ inputs.test }}
+          SHARDS: ${{ inputs.shards }}
+          SHARD: ${{ matrix.shard }}
+          START_AT: ${{ needs.plan.outputs.start_at }}
+          RATES: ${{ inputs.rates }}
+          STAGE_DURATION: ${{ inputs.stage_duration }}
+        run: |
+          ulimit -n 65535 || true
+          sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535" || true
+          mkdir -p out
+          vmstat -t 1 > out/vmstat.txt &
+          date -u +%FT%TZ > out/start.txt
+          set +e
+          k6 run --quiet --no-color \
+            --system-tags=status,method,scenario,check,error,error_code,expected_response \
+            --out csv=out/raw.csv.gz --summary-export=out/summary.json "k6/$TEST.js" 2>&1 | tee out/k6.txt
+          echo "exit=${PIPESTATUS[0]}" > out/exit.txt
+          date -u +%FT%TZ > out/end.txt
+          python3 scripts/scrub.py out/k6.txt out/summary.json
+          {
+            echo "### $TEST shard $SHARD/$SHARDS"
+            echo "開始 $(cat out/start.txt) / 終了 $(cat out/end.txt) (UTC)、$(cat out/exit.txt)"
+            echo '```'
+            sed -n '/THRESHOLDS/,$p' out/k6.txt | grep -v '^time=' | head -80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: loadtest-${{ inputs.test }}-${{ github.run_number }}-shard${{ matrix.shard }}
+          path: out/
