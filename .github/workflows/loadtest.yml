@@ -20,6 +20,10 @@ on:
         description: ramp の各段の時間
         type: string
         default: 5m
+      ramp_duration:
+        description: ramp の各段の前に目標まで上げる時間 (0s で即座に切り替える)
+        type: string
+        default: 30s
       customers:
         description: リクエストに使う顧客の数
         type: number
@@ -89,6 +93,7 @@ jobs:
           START_AT: ${{ needs.plan.outputs.start_at }}
           RATES: ${{ inputs.rates }}
           STAGE_DURATION: ${{ inputs.stage_duration }}
+          RAMP_DURATION: ${{ inputs.ramp_duration }}
         run: |
           ulimit -n 65535 || true
           sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535" || true
